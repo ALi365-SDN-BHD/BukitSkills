@@ -23,12 +23,13 @@ description: Use when using bukit to create or modify site.yaml, asking about th
 
 | Node | Responsibility | Key Fields |
 |------|------|---------|
-| `site` | Site metadata and global behavior | name, title, url, baseUrl, language, collections, plugins, externalPlugins |
+| `site` | Site metadata and global behavior | name, title, url, baseUrl, language, collections, plugins, externalPlugins, feed, sitemapDetail, related, menus, search, pagination |
 | `content` | Content source definition | provider (notion/markdown), sources, media |
 | `build` | Build behavior | output, clean, draft, listPageContentMode |
 | `theme` | Theme configuration | name, layouts, assets, static, params |
 | `taxonomy` | Taxonomy configuration | template, kinds, pageSize, outputMode |
 | `logging` | Log level | level (debug/info/warn/error) |
+| `deploy` | Deployment configuration | provider, branch, output, message |
 
 ## Scenario Templates
 
@@ -39,8 +40,32 @@ site:
   name: my-blog
   title: My Blog
   baseUrl: /
+  url: https://example.com
   language: zh-CN
   timezone: Asia/Shanghai
+  feed:
+    formats: [rss, atom]
+    limit: 20
+  sitemapDetail:
+    defaultPriority: 0.5
+    defaultChangefreq: weekly
+  search:
+    ui: default
+    uiTheme: light
+  related:
+    enabled: true
+    threshold: 80
+    limit: 5
+  menus:
+    main:
+      - identifier: home
+        name: Home
+        url: /
+        weight: 1
+      - identifier: blog
+        name: Blog
+        url: /blog/
+        weight: 2
   collections:
     post:
       permalink: /blog/{year}/{month}/{slug}/
@@ -49,6 +74,12 @@ site:
       pagination:
         enabled: true
         pageSize: 10
+        urlPattern: page/:num/
+      output:
+        rss: true
+        archive:
+          enabled: true
+          depth: monthly
     page:
       permalink: /{slug}/
       template: pages/page.html
@@ -148,21 +179,25 @@ theme:
 | `timezone` | string | `Asia/Shanghai` | IANA timezone identifier |
 | `languages` | string[] | — | Language list for multilingual, e.g., `[zh-CN, en]` |
 | `defaultLanguage` | string | First language | Default language in multilingual mode |
-| `outputPathEncoding` | string | `none` | Output path encoding: `none`/`slug`/`urlencode`/`sanitize` |
+| `outputPathEncoding` | string | `none` | Output path encoding: `none`/`slug`/`urlencode`/`sanitize`. Applies to both content and derived pages (pagination, archive, taxonomy). |
 | `sitemapMode` | string | `split` | Sitemap mode: `split`/`merged`/`index` |
 | `rssMode` | string | `split` | RSS mode: `split`/`merged` |
 | `searchMode` | string | `split` | Search index mode: `split`/`merged`/`index` |
 | `autoSummary` | bool | false | Auto-generate summaries |
 | `autoSummaryMaxLength` | int | 200 | Max auto-summary length (1-5000) |
 | `pluginFailMode` | string | `strict` | Plugin failure policy: `strict`/`warn` |
-| `deriveConflictPolicy` | string | `fail` | Derived page route conflict policy: `fail`/`warn`/`last-wins` |
-| `externalAssemblyTrustMode` | string | `warn` | External assembly trust mode: `strict`/`warn` |
+| `deriveConflictPolicy` | string | `fail` | Derived page route conflict policy: `fail`/`warn`/`last-wins`. Content-page conflicts always fail regardless of this setting. |
 | `searchIncludeDerived` | bool | false | Whether search index includes derived pages |
 | `externalProtocolIncludeRoutedPages` | bool | false | Whether external protocol plugins receive routed pages |
 | `collections` | map | — | Collection route definitions |
-| `plugins` | map | — | Plugin toggles (`{pluginName: {enabled: false}}`) |
+| `plugins` | map | — | Plugin toggles (`{pluginName: {enabled: false}}`). Key `feed` replaces old `rss` |
 | `externalPlugins` | map | — | External plugin configuration |
-| `externalAssemblyAllowlist` | map | — | External assembly allowlist (`{filename: SHA256}`) |
+| `feed` | map | — | Feed config: `formats`, `limit`, `path` |
+| `sitemapDetail` | map | — | Sitemap detail: `defaultPriority`, `defaultChangefreq`, `imageEnabled`, `videoEnabled` |
+| `related` | map | — | Related content: `enabled`, `threshold`, `limit`, `indices` |
+| `menus` | map | — | Multi-menu navigation definitions |
+| `search` | map | — | Search UI: `ui`, `uiTheme`, `placeholderText` |
+| `pagination` | map | — | Global pagination defaults: `pageSize` |
 
 SEO-oriented configs should include both `site.url` and `site.description`. Without `site.url`, canonical and schema URLs fall back to relative paths and audit emits warnings. Without `site.description`, generated home/list/taxonomy/pagination routes usually emit `seo.description_missing` unless the route has its own summary.
 | `permalinks` | map | — | Global permalink custom placeholders |
@@ -250,6 +285,7 @@ content:
 | `clean` | bool | true | Whether to clear output directory before build |
 | `draft` | bool | false | Whether to render drafts (pages with draft: true) |
 | `listPageContentMode` | string | `auto` | List page content mode: `auto`/`always`/`never` |
+| `schemaFailMode` | string | `warn` | Schema validation failure behavior: `warn` or `strict` |
 
 ### theme Node
 
@@ -259,7 +295,13 @@ content:
 | `layouts` | string | `layouts` | Template subdirectory name |
 | `assets` | string | `assets` | Asset subdirectory name (SCSS, etc. that need processing) |
 | `static` | string | `static` | Static file subdirectory name (copied directly) |
+| `staticTemplate` | string | — | When set, renders `static/` `.html` files through Scriban (injecting `page.content`); otherwise copies raw |
 | `params` | map | — | Theme parameters, accessed as `{{ site.params.xxx }}` in templates |
+| `extends` | string | — | Parent theme name (cascade lookup for theme inheritance) |
+| `shortcodes` | map | — | Reusable HTML snippets for Markdown/Scriban |
+| `components` | map | — | Reusable template components with typed props |
+| `scss` | map | — | SCSS compilation config |
+| `images` | map | — | Image optimization config |
 
 ### taxonomy Node
 
@@ -282,12 +324,49 @@ content:
 taxonomy:
   kinds:
     - key: tags            # Field name (required)
-      title: Tags          # Display name
+      kind: tags           # URL path segment (default: key)
+      title: Tags          # Display name (default: key)
+      singularTitlePrefix: "Tag: "  # Term page title prefix
       template: pages/tag.html
+      indexTemplate: pages/tag-index.html
+      termTemplate: pages/tag-term.html
       indexEnabled: true
+      hierarchical: false  # Enable parent-child hierarchy (computes children + ancestors)
     - key: categories
+      kind: categories
       title: Categories
-      singularTitlePrefix: "Category: "   # Page title prefix
+      hierarchical: true   # Categories often benefit from hierarchy
+```
+
+**kinds[].hierarchical** (new in v3.0.0):
+- When `true`, computes `children` and `ancestors` arrays for each term
+- Terms with `parent` metadata create parent-child relationships
+- Template variables: `page.fields.taxonomy.value.children` (slug[]), `page.fields.taxonomy.value.ancestors` (slug[])
+- Index page terms: `page.fields.terms.value[].children`, `page.fields.terms.value[].ancestors`
+- JSON output: `taxonomy.json` includes `children` and `ancestors` per term
+
+#### Term metadata fields (via data source or _index.md)
+
+Each term can carry additional metadata loaded from `taxonomy_ensure_terms` data sources or `content/_taxonomy/<kind>/<slug>/_index.md`:
+
+| Field | Type | Description |
+|------|------|------|
+| `description` | string | Term description text |
+| `image` | string | Term cover image URL |
+| `weight` | int | Sort weight (higher = first, default 0) |
+| `parent` | string | Parent term slug (for hierarchy) |
+
+Example data file (`content/data/tags.yaml`):
+```yaml
+- title: Machine Learning
+  slug: ml
+  description: Everything about ML and AI
+  image: /assets/images/ml-cover.png
+  weight: 10
+  parent: tech
+- title: Python
+  slug: python
+  weight: 5
 ```
 
 ### logging Node
@@ -307,11 +386,315 @@ Collection routing is Bukit's core routing model. Each entry must declare:
 | `permalink` | string | **Yes** | URL pattern, **must include `{slug}`**. Supports `{slug}`/`{year}`/`{month}`/`{day}`/`{type}` |
 | `template` | string | **Yes** | Template file path (e.g., `pages/post.html`) |
 | `listRoute` | string | — | List page route, must start with `/` |
+| `listTemplate` | string | — | Template for list page rendering (e.g., `pages/blog-list.html`); defaults to `pages/list.html` |
 | `pagination.enabled` | bool | — | Enable pagination |
 | `pagination.pageSize` | int | 10 | Entries per page (positive integer) |
 | `output.rss` | bool | true | Whether the collection generates RSS |
 | `output.sitemap` | bool | true | Whether the collection is included in sitemap |
 | `output.archive` | bool | false | Whether to generate yearly archives |
+| `output.archiveDetail` | map | — | Archive detail config: `depth` (yearly/monthly/daily), `template`, `routePrefix` |
+| `filteredLists` | array | — | Sub-list pages filtered by field value. Each entry: `{field, value, listRoute, listTemplate?}`. Items whose front matter `field` value matches `value` are grouped into a separate list page. |
+| `schema` | array | — | Content field validation schema. Each entry: `{name, type, label, required, default}` |
+
+## Feed Configuration (site.feed)
+
+Controls multi-format feed generation (RSS 2.0, Atom, JSON Feed). Replaces the old `rssMode` for format selection.
+
+| Field | Type | Default | Description |
+|------|------|--------|------|
+| `feed.formats` | string[] | `["rss"]` | Feed formats: `rss`, `atom`, `json` |
+| `feed.limit` | int | 20 | Max items per feed |
+| `feed.path` | string | `feed` | Base path prefix for feed files |
+
+Per-collection feed customization (in `site.collections.<key>.output`):
+
+| Field | Type | Default | Description |
+|------|------|--------|------|
+| `output.rss` | bool | true | Enable feed for this collection |
+| `output.feedPath` | string | — | Per-collection feed directory (e.g., `blog-feed` → `/blog-feed/atom.xml`) |
+| `output.feedTitle` | string | — | Per-collection feed title (defaults to `site.title`) |
+| `output.feedDescription` | string | — | Per-collection feed description |
+
+```yaml
+site:
+  feed:
+    formats: ["rss", "atom", "json"]
+    limit: 20
+    path: feed
+
+collections:
+  post:
+    output:
+      rss: true
+      feedPath: blog-feed
+      feedTitle: "My Blog Posts"
+      feedDescription: "Latest blog articles"
+```
+
+Plugin toggle: use key `feed` (replaces the old `rss` key):
+```yaml
+site:
+  plugins:
+    feed:
+      enabled: false   # Disable all feed generation
+```
+
+## Sitemap Detail Configuration (site.sitemapDetail)
+
+Controls sitemap.xml enhancement fields.
+
+| Field | Type | Default | Description |
+|------|------|--------|------|
+| `sitemapDetail.defaultPriority` | double | 0.5 | Default `<priority>` value (0.0–1.0) |
+| `sitemapDetail.defaultChangefreq` | string | `weekly` | Default `<changefreq>`: always/hourly/daily/weekly/monthly/yearly/never |
+| `sitemapDetail.imageEnabled` | bool | false | Enable Image Sitemap extension (`xmlns:image`) |
+| `sitemapDetail.videoEnabled` | bool | false | Enable Video Sitemap extension (`xmlns:video`) |
+
+Front matter overrides:
+```yaml
+---
+sitemap:
+  priority: 0.8
+  changefreq: "daily"
+  images:
+    - url: "/images/hero.jpg"
+      caption: "Hero image"
+      title: "Main hero"
+  videos:
+    - url: "https://youtube.com/watch?v=xxx"
+      title: "Tutorial"
+      thumbnail: "/images/thumb.jpg"
+---
+```
+
+```yaml
+site:
+  sitemapDetail:
+    defaultPriority: 0.5
+    defaultChangefreq: "weekly"
+    imageEnabled: true
+    videoEnabled: false
+```
+
+## Related Content Configuration (site.related)
+
+Controls automatic related content recommendation.
+
+| Field | Type | Default | Description |
+|------|------|--------|------|
+| `related.enabled` | bool | false | Enable related content computation |
+| `related.threshold` | int | 80 | Minimum score to include (0–1000) |
+| `related.limit` | int | 5 | Max related items per page |
+| `related.indices` | array | `[{name:tags,weight:80},{name:categories,weight:60}]` | Matching dimensions and weights |
+
+Each index in `indices`: `{name: string, weight: int}`. Supported names: `tags`, `categories`, `keywords`, `collection`/`type`, `date`.
+
+```yaml
+site:
+  related:
+    enabled: true
+    threshold: 80
+    limit: 5
+    indices:
+      - name: tags
+        weight: 100
+      - name: categories
+        weight: 60
+      - name: keywords
+        weight: 40
+```
+
+Data available in templates via `context.Data["__related_pages"]` — a dictionary keyed by content item ID, each value is a list of `{title, url, score}`.
+
+## Menu Configuration (site.menus)
+
+Defines multi-menu navigation with nested children support.
+
+```yaml
+site:
+  menus:
+    main:
+      - identifier: home
+        name: Home
+        url: /
+        weight: 1
+      - identifier: blog
+        name: Blog
+        url: /blog/
+        weight: 2
+        children:
+          - identifier: tech
+            name: Tech
+            url: /blog/tags/tech/
+            weight: 1
+    footer:
+      - identifier: about
+        name: About
+        url: /about/
+        weight: 1
+```
+
+| Field | Type | Required | Description |
+|------|------|------|------|
+| `identifier` | string | Yes | Unique menu item identifier |
+| `name` | string | Yes | Display name |
+| `url` | string | Yes | Link URL |
+| `weight` | int | 1 | Sort order (lower = first) |
+| `children` | array | — | Nested sub-menu items (same structure) |
+
+Data available in templates via `context.Data["menus"]` and as `menus.json` in output.
+
+## Search Detail Configuration (site.search)
+
+Controls search index and built-in search UI.
+
+| Field | Type | Default | Description |
+|------|------|--------|------|
+| `search.ui` | string | `default` | Built-in search UI: `default` or `false` to disable |
+| `search.uiTheme` | string | `light` | UI theme: `light` / `dark` / `auto` |
+| `search.placeholderText` | string | — | Search input placeholder text |
+
+```yaml
+site:
+  search:
+    ui: "default"
+    uiTheme: "dark"
+    placeholderText: "Search articles..."
+```
+
+Front matter:
+```yaml
+---
+searchWeight: 5       # Higher = ranked higher (default 1)
+searchExclude: true   # Exclude from search index
+---
+```
+
+## Pagination Global Configuration (site.pagination)
+
+Global pagination defaults.
+
+| Field | Type | Default | Description |
+|------|------|--------|------|
+| `pagination.pageSize` | int | 10 | Global default page size |
+
+Per-collection pagination enhancements (in `site.collections.<key>.pagination`):
+
+| Field | Type | Default | Description |
+|------|------|--------|------|
+| `urlPattern` | string | `page/:num/` | URL pattern with `:num` placeholder (e.g., `p/:num/`) |
+| `firstPageUsesListRoute` | bool | true | Whether page 1 uses `listRoute` directly instead of `page/1/` |
+
+```yaml
+collections:
+  post:
+    pagination:
+      enabled: true
+      pageSize: 10
+      urlPattern: "p/:num/"
+      firstPageUsesListRoute: true
+```
+
+## Archive Detail Configuration
+
+Per-collection archive customization.
+
+```yaml
+collections:
+  post:
+    output:
+      archive:
+        enabled: true
+        depth: "daily"              # yearly | monthly | daily
+        template: "pages/archive.html"
+        routePrefix: "archives"     # Custom URL prefix (default: "archive")
+```
+
+## Data Files (data/ directory)
+
+Place YAML/JSON/TOML data files in `data/` directory for template access. Supports multi-language data with `data/{lang}/` subdirectories.
+
+```
+data/
+  authors.yaml
+  navigation.json
+  zh-CN/
+    strings.yaml
+  en/
+    strings.yaml
+```
+
+Data is automatically loaded and injected into `context.Data["__data_files"]` by the DataFilesPlugin. Nested directories are loaded recursively.
+
+## Config Examples
+
+### Shortcodes
+
+```yaml
+theme:
+  shortcodes:
+    youtube: '<div class="video"><iframe src="https://www.youtube.com/embed/{{ $1 }}"></iframe></div>'
+    callout: '<div class="callout callout-{{ $1 }}">{{ $2 }}</div>'
+```
+
+### Theme Inheritance
+
+```yaml
+theme:
+  name: my-custom-theme
+  extends: official-blog-theme
+```
+
+### Schema Validation
+
+```yaml
+collections:
+  posts:
+    schema:
+      - name: featured
+        type: bool
+        required: true
+      - name: rating
+        type: number
+        min: 1
+        max: 5
+      - name: status
+        type: string
+        enum: [draft, published]
+        default: draft
+```
+
+Supported schema keys: `name`, `type`, `label`, `required`, `default`, `enum`, `format`, `min`, `max`. Formats include `url`/`uri`, `email`, `date`/`datetime`, and `slug`; defaults are applied before schema validation.
+
+### Environment Overrides
+
+Use `BUKIT_` variables with `__` nesting for CI/CD scalar overrides:
+
+```bash
+BUKIT_SITE__URL=https://example.com
+BUKIT_SITE__TITLE="Production Site"
+BUKIT_BUILD__CLEAN=false
+BUKIT_CONTENT__MARKDOWN__DIR=posts
+```
+
+### Image Optimization
+
+```yaml
+theme:
+  images:
+    enabled: true
+    formats: [webp, avif]
+    sizes: [480, 768, 1200]
+    quality: 85
+```
+
+### SCSS Compilation
+
+```yaml
+theme:
+  scss:
+    enabled: true
+```
 
 ## CLI Parameter Overrides
 
@@ -350,6 +733,21 @@ These overrides only affect the current build and do not modify site.yaml.
 | `site.collections keys must be non-empty` | Collection name is empty string | Ensure collection names are non-empty |
 | `site.languages has duplicate language` | Language list has duplicates | Remove duplicates |
 | `site.defaultLanguage must be included in site.languages` | Default language not in list | Add defaultLanguage to languages |
+
+## Common Configuration Issues: Symptom-Cause-Fix
+
+| Symptom | Likely Cause | Fix |
+|---|---|---|
+| Build succeeds but pages are generated under unexpected URLs | `baseUrl`, collection `permalink`, or CLI `--base-url` override differs from the intended deployment path | Keep `site.baseUrl` as `/` for root deployments, use `/subpath/` for subdirectory deployments, and check CLI overrides before changing `site.yaml` |
+| A collection has content files but no list page appears | `listRoute` is missing, points to the wrong path, or the list template is absent | Add `listRoute`, verify it starts with `/`, and ensure `listTemplate` or `pages/list.html` exists in the active theme |
+| Markdown pages render as the wrong type | `content.markdown.defaultType` does not match a key in `site.collections`, or front matter `type` is missing | Align `defaultType` and front matter `type` with the collection key used in `site.collections` |
+| Notion pages are fetched but fields are missing in templates | `fieldPolicy.mode: whitelist` excludes properties needed by templates | Add required properties to `fieldPolicy.allowed`, or use `fieldPolicy.mode: all` when exploring a new database schema |
+| Taxonomy pages are empty or terms are missing | `taxonomy.kinds[].key` does not match the content field name, or `taxonomy.outputMode` disables page output | Match `key` to the front matter or Notion property name and use `outputMode: both` or `pages` when term pages should be generated |
+| Pagination URLs duplicate or conflict with other routes | `pagination.urlPattern`, `listRoute`, or collection `permalink` overlap | Keep pagination paths under the list route, for example `listRoute: /blog/` with `urlPattern: page/:num/` |
+| SEO audit warns about missing canonical, sitemap, or schema URLs | `site.url` is missing or not absolute | Set `site.url` to the production origin, including `https://`, and keep `site.baseUrl` for path prefix only |
+| Config works locally but fails in CI | Environment overrides with `BUKIT_` changed scalar values unexpectedly | Print the effective config in CI diagnostics and review `BUKIT_*` variables before editing `site.yaml` |
+| Theme templates or assets cannot be found | `theme.name`, `theme.layouts`, `theme.assets`, or `theme.static` does not match the active theme directory | Verify `themes/<theme.name>/` exists and keep layout paths relative to the theme root conventions |
+| Schema validation warnings appear for fields that exist | Schema `type`, `format`, or `enum` does not match actual Markdown front matter or Notion property values | Normalize content values, add `default` where safe, or temporarily use `build.schemaFailMode: warn` while migrating content |
 
 ## Checklist: New Site Config Review
 

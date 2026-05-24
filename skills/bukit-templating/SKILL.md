@@ -37,6 +37,9 @@ Three main data objects available in templates:
 | `site.params` | object | Mapping of `theme.params` |
 | `site.modules` | object | Data modules (content with `mode: data`) |
 | `site.data` | object | Data built from `sources[].mode: data` or data module builder |
+| `site.menus` | object | Menu definitions from `site.menus` config (e.g., `site.menus.main`, `site.menus.footer`). Each menu is a list of `{identifier, name, url, children}` |
+| `site.related_pages` | object | Related content data from RelatedContentPlugin. Dictionary keyed by content item ID → list of `{title, url, score}` |
+| `site.data_files` | object | Data files loaded from `data/` directory by DataFilesPlugin. Supports nested keys for namespaces and multi-language subdirectories. |
 
 ### `page` — Current Page Info
 
@@ -44,13 +47,14 @@ Three main data objects available in templates:
 |------|------|------|
 | `page.title` | string | Page title |
 | `page.url` | string | Page URL (relative, base_url not included) |
-| `page.content` | string | Page HTML content |
+| `page.content` | string | Rendered HTML body (note: `needs_page_content: true` in `bukit.templates.yaml` controls whether content is loaded for list pages) |
 | `page.summary` | string/null | Page summary |
 | `page.publish_date` | DateTime/null | Publish date |
 | `page.fields` | object | Metadata fields, e.g., `page.fields.tags`, `page.fields.author` |
 
 Each field has a `{type: string, value: ...}` structure:
-```html
+```
+
 {{ page.fields.tags.value }}              ← Direct value
 {{ for tag in page.fields.tags.value }}   ← If it's an array
 ```
@@ -174,6 +178,123 @@ The `pages` array is sorted by publish date in descending order.
 
 When pagination is enabled for taxonomy or list pages, `pages` only contains entries for the current page. Pagination info is passed through page metadata and used as needed in templates.
 
+### Taxonomy Pages
+
+Taxonomy index pages (e.g., `/tags/`, `/categories/`) and term pages (e.g., `/tags/python/`) receive dedicated variables:
+
+#### Term Page Variables (`page.fields`)
+
+| Variable | Type | Description |
+|------|------|------|
+| `page.fields.items.value` | list | Articles in this term (current page) |
+| `page.fields.taxonomy.value` | object | Term metadata (see below) |
+| `page.fields.pagination.value` | object | Pagination info |
+
+Each item in `items.value`:
+```scriban
+{{ for item in page.fields.items.value }}
+  {{ item.title }}        # Article title
+  {{ item.url }}           # Article URL
+  {{ item.publish_date }}  # Publish date
+  {{ item.summary }}       # Article summary (if available)
+{{ end }}
+```
+
+#### taxonomy.value Fields
+
+| Field | Type | Description |
+|------|------|------|
+| `kind` | string | Kind name (e.g., "tags", "categories") |
+| `term` | string | Term display name |
+| `slug` | string | Term URL slug |
+| `count` | int | Total article count |
+| `description` | string? | Term description (from data source) |
+| `image` | string? | Term cover image (from data source) |
+| `weight` | int? | Sort weight (only present if non-zero) |
+| `parent` | string? | Parent term slug |
+| `children` | string[]? | Child term slugs (hierarchical=true only) |
+| `ancestors` | string[]? | Ancestor chain (hierarchical=true only) |
+| `aliases` | string[]? | Term aliases |
+
+#### pagination.value Fields
+
+| Field | Type | Description |
+|------|------|------|
+| `page` | int | Current page number |
+| `page_size` | int | Items per page |
+| `total` | int | Total item count |
+| `total_pages` | int | Total pages |
+| `has_prev` | bool | Has previous page |
+| `has_next` | bool | Has next page |
+
+#### Index Page Variables (`page.fields`)
+
+| Variable | Type | Description |
+|------|------|------|
+| `page.fields.terms.value` | list | All visible terms sorted by weight |
+
+Each term in `terms.value[]`:
+```scriban
+{{ for term in page.fields.terms.value }}
+  {{ term.title }}        # Display name
+  {{ term.slug }}         # URL slug
+  {{ term.url }}          # Term page URL
+  {{ term.count }}        # Article count
+  {{ term.description }}  # Optional description
+  {{ term.image }}        # Optional cover image
+  {{ term.weight }}       # Optional sort weight
+  {{ term.children }}     # Optional child slugs (hierarchical)
+  {{ term.ancestors }}    # Optional ancestor chain (hierarchical)
+  {{ term.aliases }}      # Optional aliases
+{{ end }}
+```
+
+#### Complete Term Page Template Example
+
+```scriban
+{% layout "layouts/base.html" %}
+
+{{ items = page.fields.items.value }}
+{{ tax = page.fields.taxonomy.value }}
+{{ pager = page.fields.pagination.value }}
+
+<header>
+  <h1>{{ page.title }}</h1>
+  {{ if tax.description }}
+    <p class="description">{{ tax.description }}</p>
+  {{ end }}
+  {{ if tax.ancestors }}
+    <nav class="breadcrumb">
+    {{ for ancestor in tax.ancestors }}
+      / <a href="{{ site.base_url }}/{{ tax.kind }}/{{ ancestor }}/">{{ ancestor }}</a>
+    {{ end }}
+    </nav>
+  {{ end }}
+</header>
+
+{{ for item in items }}
+  <article>
+    <h2><a href="{{ site.base_url }}{{ item.url }}">{{ item.title }}</a></h2>
+    {{ if item.summary }}<p>{{ item.summary }}</p>{{ end }}
+  </article>
+{{ end }}
+
+<nav class="pagination">
+  {{ if pager.has_prev }}
+    <a href="{{ site.base_url }}/{{ tax.kind }}/{{ tax.slug }}/page/{{ pager.page - 1 }}/">Prev</a>
+  {{ end }}
+  <span>Page {{ pager.page }} of {{ pager.total_pages }}</span>
+  {{ if pager.has_next }}
+    <a href="{{ site.base_url }}/{{ tax.kind }}/{{ tax.slug }}/page/{{ pager.page + 1 }}/">Next</a>
+  {{ end }}
+</nav>
+```
+
+#### Feed/Redirect Output
+
+- **RSS feeds**: `/<kind>/<slug>/feed.xml` generated automatically for each term with articles
+- **Alias redirects**: `/<kind>/<alias_slug>/index.html` → `/<kind>/<slug>/` (HTML meta refresh)
+
 ### Accessing Custom Fields
 
 ```html
@@ -220,6 +341,75 @@ When pagination is enabled for taxonomy or list pages, `pages` only contains ent
 {{ end }}
 ```
 
+## Shortcodes
+
+Shortcodes allow reusable HTML snippets in both Markdown content and Scriban templates.
+
+### Configuration (site.yaml)
+
+```yaml
+theme:
+  shortcodes:
+    youtube: '<div class="video"><iframe src="https://www.youtube.com/embed/{{ $1 }}"></iframe></div>'
+    callout: '<div class="callout callout-{{ $1 }}">{{ $2 }}</div>'
+```
+
+Parameters are positional, referenced as `{{ $1 }}`, `{{ $2 }}`, etc.
+
+### Usage in Markdown
+
+```
+{% youtube "dQw4w9WgXcQ" %}
+{% callout "warning" "This is important!" %}
+```
+
+Shortcodes are processed during rendering and work even with HTML-encoded content from the Markdown pipeline.
+
+### Usage in Scriban
+
+```
+{{ shortcode "youtube" "dQw4w9WgXcQ" }}
+```
+
+---
+
+## Components
+
+Components are declared in site.yaml with typed props and used in Scriban templates via `{{ comp.render "Name" args }}`.
+
+### Configuration (site.yaml)
+
+```yaml
+theme:
+  components:
+    PostCard:
+      template: "partials/post-card.html"
+      props:
+        title: ""
+        url: ""
+```
+
+### Component Template (partials/post-card.html)
+
+```html
+<div class="post-card">
+  <h3>{{ title }}</h3>
+  <a href="{{ url }}">Read more</a>
+</div>
+```
+
+### Usage in Scriban
+
+```
+{{ for p in pages }}
+{{ comp.render "PostCard" p.title p.url }}
+{{ end }}
+```
+
+Components inherit the parent template's global variables (`page`, `site`, etc.) and receive their own props as local variables bound by name.
+
+---
+
 ## Built-in Functions
 
 Bukit reuses Scriban's built-in functions, including:
@@ -259,3 +449,317 @@ Template paths in site.yaml collection configs are referenced without the `layou
 | Variable output shows HTML escaped | Scriban defaults to escaping | Use `{{ variable | html.raw }}` |
 | Chinese characters garbled | Template file encoding issue | Ensure template file is UTF-8 (without BOM) |
 | base_url path joins with double slashes | `base_url` ends with `/` causing `//` in URLs | `site.base_url` is empty string when `/`, use `{{ site.base_url }}/xxx` directly |
+
+---
+
+## Schema-Driven Template Generation
+
+When a user has defined `collection.schema` in site.yaml, use these patterns to generate precise templates.
+
+### Schema Field → Template Pattern Map
+
+| Schema Type | Template Pattern |
+|---|---|
+| `string` | `{{ page.fields.KEY.value }}` |
+| `boolean` | `{{ if page.fields.KEY.value }}...{{ end }}` |
+| `date` | `{{ page.fields.KEY.value | date.to_string "%Y-%m-%d" }}` |
+| `number` | `{{ page.fields.KEY.value }}` |
+| `array` | `{{ for item in page.fields.KEY.value }}...{{ end }}` |
+| `object` | `{{ page.fields.KEY.value.SUBKEY }}` |
+| `image` (url) | `<img src="{{ page.fields.KEY.value }}" alt="{{ page.title }}" class="field-cover">` |
+| `select` | `{{ page.fields.KEY.value }}` |
+| `multi_select` | `{{ for tag in page.fields.KEY.value }}<span class="tag">{{ tag }}</span>{{ end }}` |
+| `email` | `<a href="mailto:{{ page.fields.KEY.value }}">{{ page.fields.KEY.value }}</a>` |
+
+### Auto-Generated Post Template (Schema-Aware)
+
+For schema `[title, date, tags, cover, author, summary]`:
+```html
+{% layout "layouts/base.html" %}
+
+<article class="article">
+  <header class="article-header">
+    {{ if page.fields.cover.value }}
+      <img class="article-cover" src="{{ page.fields.cover.value }}" alt="{{ page.title }}">
+    {{ end }}
+    <h1>{{ page.title }}</h1>
+    <div class="article-meta">
+      {{ if page.fields.author.value }}<span class="meta-author">{{ page.fields.author.value }}</span>{{ end }}
+      {{ if page.publish_date }}<time>{{ page.publish_date | date.to_string "%Y-%m-%d" }}</time>{{ end }}
+    </div>
+    {{ if page.summary }}<p class="article-summary">{{ page.summary }}</p>{{ end }}
+    {{ if page.fields.tags.value }}
+      <div class="article-tags">
+        {{ for tag in page.fields.tags.value }}
+          <a class="tag" href="{{ site.base_url }}/tags/{{ tag | string.downcase }}/">{{ tag }}</a>
+        {{ end }}
+      </div>
+    {{ end }}
+  </header>
+  <div class="content">{{ page.content }}</div>
+</article>
+```
+
+### Auto-Generated List Card Partial
+```html
+<li class="card">
+  {{ if item.fields.cover.value }}
+    <img class="card-image" src="{{ item.fields.cover.value }}" alt="{{ item.title }}" loading="lazy">
+  {{ end }}
+  <div class="card-content">
+    <h2 class="card-title"><a href="{{ site.base_url }}{{ item.url }}">{{ item.title }}</a></h2>
+    <div class="card-meta">
+      {{ if item.publish_date }}<time>{{ item.publish_date | date.to_string "%Y-%m-%d" }}</time>{{ end }}
+      {{ if item.fields.author.value }}<span>· {{ item.fields.author.value }}</span>{{ end }}
+    </div>
+    {{ if item.summary }}<p class="card-summary">{{ item.summary }}</p>{{ end }}
+  </div>
+</li>
+```
+
+## Advanced Component Composition Patterns
+
+### Pattern 1: Slot-Based Partial
+```html
+{{ with title = "Featured" }}
+  {{ body = "" }}<ul>...</ul>{{ end }}
+  {{ include "partials/section.html" }}
+{{ end }}
+```
+
+### Pattern 2: Conditional Layout Switching
+```html
+{{ if page.fields.layout_type.value == "landing" }}
+  {{ include "layouts/base-landing.html" }}{{ content }}
+{{ else }}
+  {{ include "partials/header.html" }}<main>{{ content }}</main>{{ include "partials/footer.html" }}
+{{ end }}
+```
+
+### Pattern 3: Breadcrumb Navigation
+```html
+<nav class="breadcrumb" aria-label="Breadcrumb">
+  <ol>
+    <li><a href="{{ site.base_url }}/">Home</a></li>
+    {{ for seg in page.url | string.slice 1 | string.split "/" }}
+      {{ if seg != "" }}<li><a href="{{ site.base_url }}/{{ seg }}/">{{ seg }}</a></li>{{ end }}
+    {{ end }}
+    <li aria-current="page">{{ page.title }}</li>
+  </ol>
+</nav>
+```
+
+### Pattern 4: Reading Time Estimate
+```html
+{{ word_count = page.content | string.split " " | array.size }}
+{{ reading_time = word_count / 200 | math.ceil }}
+{{ if reading_time < 1 }}{{ reading_time = 1 }}{{ end }}
+<span class="reading-time">{{ reading_time }} min read</span>
+```
+
+### Pattern 5: Empty State
+```html
+{{ if pages.size == 0 }}
+  <div class="empty-state"><p>No content yet.</p></div>
+{{ else }}
+  <ul class="card-list">{{ for p in pages }}...{{ end }}</ul>
+{{ end }}
+```
+
+## SEO Best Practice Templates
+
+### JSON-LD Structured Data
+
+**Article:**
+```html
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Article",
+  "headline": "{{ page.title | html.escape }}",
+  {{ if page.fields.cover.value }}"image": "{{ page.fields.cover.value | html.escape }}",{{ end }}
+  {{ if page.publish_date }}"datePublished": "{{ page.publish_date | date.to_string "%Y-%m-%d" }}",{{ end }}
+  {{ if page.fields.author.value }}"author": { "@type": "Person", "name": "{{ page.fields.author.value | html.escape }}" },{{ end }}
+  "description": "{{ page.summary | html.escape }}"
+}
+</script>
+```
+
+**BreadcrumbList:**
+```html
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    { "@type": "ListItem", "position": 1, "name": "Home", "item": "{{ site.url }}{{ site.base_url }}/" }
+  ]
+}
+</script>
+```
+
+### Sitemap & Feed Links
+Always include in base.html `<head>`:
+```html
+<link rel="alternate" type="application/rss+xml" href="{{ site.base_url }}/rss.xml" />
+<link rel="alternate" type="application/atom+xml" href="{{ site.base_url }}/feed/atom.xml" />
+<link rel="alternate" type="application/json" href="{{ site.base_url }}/feed/feed.json" />
+<link rel="sitemap" type="application/xml" href="{{ site.base_url }}/sitemap.xml" />
+```
+
+Feed format availability depends on `site.feed.formats` config (rss, atom, json).
+
+## Built-in Search UI
+
+When `site.search.ui: "default"` is configured, the SearchIndexPlugin generates a `bukit-search.html` partial. Include it in templates:
+
+```html
+{{ include "bukit-search.html" }}
+```
+
+The search UI is a zero-dependency (~5KB) JavaScript component with:
+- Input debounce search
+- Title + content weighted scoring (with `searchWeight` front matter support)
+- Keyboard navigation (↑ ↓ Enter Escape)
+- Highlighted search results
+- Light/dark theme support via `site.search.uiTheme`
+
+```yaml
+site:
+  search:
+    ui: "default"
+    uiTheme: "dark"
+    placeholderText: "Search..."
+```
+
+## Menu Template Pattern
+
+Access menus configured in `site.menus`:
+
+```html
+<nav>
+  <ul>
+    {{ for item in site.menus.main }}
+      <li>
+        <a href="{{ item.url }}">{{ item.name }}</a>
+        {{ if item.children }}
+          <ul>
+            {{ for child in item.children }}
+              <li><a href="{{ child.url }}">{{ child.name }}</a></li>
+            {{ end }}
+          </ul>
+        {{ end }}
+      </li>
+    {{ end }}
+  </ul>
+</nav>
+```
+
+## Related Content Pattern
+
+Access related content from RelatedContentPlugin:
+
+```html
+{{ page_id = page.title }}
+{{ related = site.related_pages[page_id] }}
+{{ if related }}
+  <section class="related-posts">
+    <h2>Related Articles</h2>
+    <ul>
+      {{ for r in related }}
+        <li><a href="{{ r.url }}">{{ r.title }}</a></li>
+      {{ end }}
+    </ul>
+  </section>
+{{ end }}
+```
+
+## Performance Optimization
+
+### Image Lazy Loading
+```html
+<img src="{{ item.fields.cover.value }}" alt="{{ item.title }}" loading="lazy" decoding="async">
+```
+
+### Conditional Script Loading
+```html
+{{ if page.fields.has_search.value }}
+  <script src="{{ site.base_url }}/assets/search.js" defer></script>
+{{ end }}
+```
+
+---
+
+## Image Helper Functions
+
+Bukit provides Scriban template functions for responsive images.
+
+### `image.img` — Complete Responsive `<img>` Tag
+
+```
+{{ image.img "/images/photo.jpg" "Alt text" "480,768,1200" "cover" }}
+```
+
+Parameters: `(src, alt, sizes, className)`
+
+Generates:
+```html
+<img src="/images/photo.jpg"
+     srcset="/images/photo.jpg?w=480 480w, /images/photo.jpg?w=768 768w, /images/photo.jpg?w=1200 1200w"
+     sizes="(max-width: 480px) 480px, (max-width: 768px) 768px, 1200px"
+     alt="Alt text" class="cover"
+     loading="lazy" decoding="async" />
+```
+
+### `image.srcset` — Generate `srcset` Attribute Only
+
+```
+{{ image.srcset "/images/photo.jpg" "480,768,1200" }}
+```
+
+Use when you need custom control over the `<img>` tag:
+```html
+<img src="/images/photo.jpg"
+     srcset="{{ image.srcset "/images/photo.jpg" "480,768,1200" }}"
+     sizes="(min-width: 1200px) 1200px, 100vw"
+     alt="Custom" />
+```
+
+## Template Capabilities — Field Declarations
+
+The `bukit.templates.yaml` manifest now supports optional field declarations for each template. This allows AI Skills and tooling to generate precise templates from content schema.
+
+### Extended Manifest Format
+
+```yaml
+templates:
+  pages/post.html:
+    capabilities:
+      needs_page_content: true
+    fields:
+      - key: cover
+        type: string
+        label: Cover Image
+        suggestion: '<img src="{{ page.fields.cover.value }}" alt="{{ page.title }}" class="article-cover" loading="lazy" />'
+      - key: tags
+        type: array
+        label: Tags
+        suggestion: '{{ for tag in page.fields.tags.value }}<a class="tag" href="{{ site.base_url }}/tags/{{ tag | string.downcase }}/">{{ tag }}</a>{{ end }}'
+      - key: author
+        type: string
+        label: Author
+        suggestion: '<span class="meta-author">{{ page.fields.author.value }}</span>'
+```
+
+### Field Declaration Properties
+
+| Property | Required | Description |
+|---|---|---|
+| `key` | Yes | Field name matching schema definition |
+| `type` | No | Field type hint (string, date, array, boolean, etc.) |
+| `label` | No | Human-readable label |
+| `suggestion` | No | Suggested Scriban code snippet for rendering this field |
+
+### How `suggestion` Works in Practice
+
+When a user asks "generate a post template for my blog schema," the AI Skill (bukit-content-to-template) reads the field declarations from `bukit.templates.yaml` and uses the `suggestion` snippets as building blocks to compose the complete template. If no `suggestion` is provided, the AI falls back to type-based defaults from the Schema Field → Template Pattern Map.

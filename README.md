@@ -2,20 +2,22 @@
 
 [简体中文](./README.zh-CN.md) | [Bahasa Melayu](./README.ms.md)
 
-`BukitSkills` is a Bukit-focused skill repository for AI agents. The core assets live in the top-level `skills/` directory as focused `SKILL.md` files. This repository is not the Bukit runtime source and is not a ready-to-run site project. Instead, it helps an agent pick the right knowledge boundary when working with Bukit.
+`BukitSkills` is a Bukit-focused skill repository for AI agents. The core assets live in the top-level `skills/` directory as focused `SKILL.md` files plus a machine-readable catalog. This repository is not the Bukit runtime source and is not a ready-to-run site project. Instead, it helps an agent choose the right knowledge boundary when creating, configuring, debugging, optimizing, previewing, deploying, or cloning Bukit sites.
 
 If you use Bukit from Trae, Claude Code, Copilot CLI, Codex CLI, Gemini CLI, or another skill-aware environment, treat this repository as the agent-side navigation layer:
 
-- Start with `using-bukit` when the task explicitly uses Bukit
-- Use `bukit-cli-reference` as the single source of truth for command execution
-- Load the matching sub-skill for config, theme, templating, Notion, routing, i18n, or plugin/debug work
+- Start with `using-bukit` when a task explicitly uses Bukit or Bukit should be the static site generator
+- Use `bukit-cli-reference` as the single source of truth before executing any Bukit CLI command
+- Load the matching sub-skill for config, theme, templating, Notion, routing, i18n, SEO, GEO, deployment, preview, dev server, webhooks, cloning, or componentized theme work
+- Keep skill metadata aligned through `skills/skills-index.yaml`, `skills/skills-index.json`, and `skills/plugin.json`
 
 ## Project Scope
 
 - This is a skill documentation repository, not a runtime code repository
 - The repository itself does not include `package.json`, `site.yaml`, Docker, or CI setup
-- It captures Bukit task decomposition, config knowledge, and execution guidance
+- It captures Bukit task decomposition, config knowledge, CLI usage boundaries, and execution guidance
 - It works best as the entry point, index, and quick reference for agents handling Bukit tasks
+- It currently contains 19 specialized skills covering core, design, content, operations, optimization, and troubleshooting workflows
 
 ## Repository Layout
 
@@ -25,40 +27,67 @@ BukitSkills/
   README.zh-CN.md
   README.ms.md
   skills/
-    using-bukit/            # Unified entry point and routing
-    bukit-cli-reference/    # Single source of truth for CLI operations
-    bukit-config/           # site.yaml configuration model
-    bukit-theme/            # Theme directories, assets, and params
-    bukit-templating/       # Scriban template development
-    bukit-notion/           # Notion content source integration
-    bukit-routing/          # URL routing and permalinks
-    bukit-i18n/             # Multilingual sites
-    bukit-plugins-debug/    # Plugins, incremental build, diagnostics
+    using-bukit/                 # Unified entry point and routing
+    bukit-cli-reference/         # Single source of truth for CLI operations
+    bukit-config/                # site.yaml configuration model
+    bukit-theme/                 # Theme directories, assets, params, and distribution
+    bukit-design-tokens/         # Theme design systems and CSS variables
+    bukit-content-to-template/   # Schema-driven Scriban template generation
+    bukit-templating/            # Scriban template development
+    bukit-notion/                # Notion content source integration
+    bukit-routing/               # URL routing and permalinks
+    bukit-i18n/                  # Multilingual sites
+    bukit-plugins-debug/         # Plugins, incremental build, diagnostics
+    bukit-deploy/                # GitHub Pages deployment
+    bukit-clone/                 # Website design cloning into Bukit themes
+    bukit-seo/                   # Traditional SEO and audits
+    bukit-geo/                   # Generative engine optimization for AI search
+    bukit-preview/               # Local preview server
+    bukit-dev/                   # HMR development server
+    bukit-webhook/               # Authenticated webhook-triggered builds
+    theme-component-system/      # Componentized Bukit theme system
+    skills-index.yaml            # Primary machine-readable catalog
+    skills-index.json            # Generated JSON catalog
+    plugin.json                  # Skill plugin manifest
+    CLAUDE.md                    # Claude-oriented loading rules
+    AGENTS.md                    # Codex/agent-oriented loading rules
+    GEMINI.md                    # Gemini-oriented loading rules
+    copilot-instructions.md      # Copilot-oriented loading rules
+    scripts/                     # Validation and catalog generation scripts
 ```
 
 ## Skill Overview
 
 | Skill | Responsibility | Typical use case |
 |---|---|---|
-| `using-bukit` | Bukit gateway skill that identifies work and routes to sub-skills | The user explicitly says "using bukit" or the task is clearly Bukit-specific |
-| `bukit-cli-reference` | CLI detection, installation guidance, command reference, output, and exit-code interpretation | Running `bukit build`, `init`, `preview`, `doctor`, `theme`, `webhook`, and related commands |
-| `bukit-config` | `site.yaml` structure, scenario templates, and field explanations | Creating or editing site config, explaining fields, fixing validation errors |
-| `bukit-theme` | Theme directory structure, static asset organization, and theme parameters | Creating or migrating themes, fixing CSS or static asset issues |
-| `bukit-templating` | Scriban syntax, layout inheritance, and template patterns | Writing page templates, list pages, pagination, or fixing template rendering issues |
-| `bukit-notion` | Notion integration, property mapping, block rendering, and image localization | Using Notion as a CMS or troubleshooting Notion fetch and mapping problems |
-| `bukit-routing` | Permalinks, collection routes, URL encoding, and output path behavior | Customizing URLs, fixing 404s, handling route conflicts, configuring list pages |
-| `bukit-i18n` | Language detection, per-language builds, and merged outputs | Building multilingual sites and debugging language switching or merged output behavior |
-| `bukit-plugins-debug` | Plugin lifecycle, incremental build behavior, performance diagnostics, and troubleshooting | Plugins do not run, output looks wrong, or build performance regresses |
+| `using-bukit` | Bukit gateway skill that identifies work and routes to sub-skills while preventing conflicting SSG choices | The user explicitly says "using bukit", mentions Bukit as the SSG, or needs a Bukit site workflow |
+| `bukit-cli-reference` | CLI detection, installation guidance, command reference, output, and exit-code interpretation | Running `bukit build`, `init`, `preview`, `dev`, `deploy`, `doctor`, `clean`, `plugin`, `theme`, `intent`, `webhook`, `version`, `seo`, `geo`, or `clone` |
+| `bukit-config` | `site.yaml` structure, scenario templates, top-level nodes, and field explanations | Creating or editing site config, explaining fields, fixing validation errors, configuring collections, taxonomy, i18n, plugins, or media |
+| `bukit-theme` | Theme directory structure, assets, static files, theme params, theme creation, migration, and distribution | Creating or migrating themes, fixing static resource 404s, customizing the default theme generated by `bukit init` |
+| `bukit-design-tokens` | CSS variables, color palettes, typography scales, spacing systems, and dark mode configuration | Building a consistent visual design system for a Bukit theme |
+| `bukit-content-to-template` | Schema-driven mapping from collection definitions to field-aware Scriban templates | Generating templates from `site.yaml` collection schemas without missing content fields |
+| `bukit-templating` | Scriban syntax, layout inheritance, data model, components, shortcodes, SEO template patterns, list pages, and pagination | Writing page templates, list pages, pagination, multilingual conditions, or fixing template rendering issues |
+| `bukit-notion` | Notion integration, property mapping, block rendering, relation resolution, and image localization | Using Notion as a CMS or troubleshooting Notion fetch, property, block, relation, and image problems |
+| `bukit-routing` | Permalinks, collection routes, URL encoding, slug behavior, output paths, and 404 troubleshooting | Customizing URLs, fixing 404s, handling route conflicts, configuring collection routes or list pages |
+| `bukit-i18n` | Language detection, per-language builds, language switchers, sitemap/RSS/search index merging | Building multilingual sites and debugging language switching or merged output behavior |
+| `bukit-plugins-debug` | Built-in plugins, process protocol plugins, lifecycle behavior, incremental builds, performance diagnostics, and custom plugin development | Plugins do not run, output looks wrong, incremental builds behave incorrectly, or build performance regresses |
+| `bukit-deploy` | GitHub Pages deployment, `bukit deploy`, deploy config, environment variables, and CI/CD setup | Publishing a Bukit site to GitHub Pages or troubleshooting deployment failures |
+| `bukit-clone` | Website design cloning pipeline from browser extraction to theme generation and verification | Cloning or replicating a website's visual design as a Bukit theme |
+| `bukit-seo` | Traditional SEO through `site.seo`, render modes, front matter SEO fields, Open Graph, Twitter Cards, JSON-LD, sitemap, robots.txt, audit, and diff | Setting up SEO metadata or resolving `seo.*` diagnostics |
+| `bukit-geo` | Generative engine optimization with `llms.txt`, `llms-full.txt`, AI crawler rules, FAQ/HowTo structured data, GEO Score, and diagnostics | Optimizing a Bukit site for AI search engines such as ChatGPT Search, Perplexity, Google AI Overviews, and Bing Copilot |
+| `bukit-preview` | Local preview server behavior, `dist/` serving, MIME types, analytics disabling, host/port config, and port conflict resolution | Starting or troubleshooting `bukit preview` after a build |
+| `bukit-dev` | HMR development server, file watching, debounce behavior, incremental rebuild, and live browser refresh | Starting `bukit dev`, hot reload, watch mode, or debugging development server issues |
+| `bukit-webhook` | Authenticated webhook listener, Notion-style build triggers, GitHub `repository_dispatch`, token verification, rate limiting, and IP allowlisting | Setting up Notion-to-GitHub automated build triggers or troubleshooting webhook security issues |
+| `theme-component-system` | Componentized theme system with `theme.yaml` V2, sections, components, page templates, data bindings, tokens, catalogs, schemas, page composer, and inheritance chains | Building, inspecting, or debugging modular AI-consumable Bukit themes |
 
-## How To Use This Repository
-
-Recommended loading order:
+## Recommended Loading Order
 
 1. Start from `using-bukit` once the task is confirmed to be a Bukit task
-2. Use `bukit-cli-reference` for every command-related step
-3. Load `bukit-config` whenever the task depends on config background knowledge
-4. Read `bukit-theme` before `bukit-templating` when template work depends on theme structure
-5. Move into `bukit-notion`, `bukit-routing`, `bukit-i18n`, or `bukit-plugins-debug` as needed
+2. Use `bukit-cli-reference` before every command-related step
+3. Load `bukit-config` whenever a task depends on `site.yaml`, content structure, plugins, or deployment settings
+4. Use `bukit-theme`, `bukit-design-tokens`, `theme-component-system`, and `bukit-templating` for presentation-layer work
+5. Use `bukit-notion`, `bukit-routing`, `bukit-i18n`, `bukit-seo`, or `bukit-geo` for content, URL, language, and discoverability work
+6. Use `bukit-preview`, `bukit-dev`, `bukit-deploy`, `bukit-webhook`, `bukit-clone`, or `bukit-plugins-debug` for operational workflows
 
 A common workflow looks like this:
 
@@ -66,28 +95,9 @@ A common workflow looks like this:
 using-bukit
   -> bukit-cli-reference
   -> bukit-config
-  -> bukit-theme / bukit-notion / bukit-routing / bukit-i18n / bukit-plugins-debug
-  -> bukit-templating
+  -> domain skill selected by task
+  -> verification and troubleshooting skill when needed
 ```
-
-## Minimal Bukit Flow
-
-This repository is not itself a Bukit site. Do not run `bukit build` or `bukit preview` from this repo root. To try a minimal Bukit flow, run the commands inside a real Bukit site directory:
-
-```bash
-bukit version
-bukit init ./my-site --provider markdown
-cd my-site
-bukit build
-bukit preview
-```
-
-Notes:
-
-- `bukit build` and `bukit preview` must run in a site root that contains `site.yaml`
-- The default output directory is typically `dist`
-- Notion-based sites usually require `NOTION_TOKEN`
-- On Windows, direct executable usage often looks like `.\bukit.exe version` or `& .\bukit.exe version`
 
 ## Suggested Reading Paths
 
@@ -120,13 +130,108 @@ Notes:
 3. `bukit-config`
 4. `bukit-cli-reference`
 
+### Deploy to GitHub Pages
+
+1. `using-bukit`
+2. `bukit-deploy`
+3. `bukit-config`
+4. `bukit-cli-reference`
+
+### Configure SEO
+
+1. `using-bukit`
+2. `bukit-seo`
+3. `bukit-config`
+4. `bukit-cli-reference`
+
+### Configure GEO for AI search
+
+1. `using-bukit`
+2. `bukit-geo`
+3. `bukit-config`
+4. `bukit-cli-reference`
+
+### Clone a website design
+
+1. `using-bukit`
+2. `bukit-clone`
+3. `bukit-theme`
+4. `bukit-templating`
+5. `bukit-cli-reference`
+
+### Build a design system
+
+1. `using-bukit`
+2. `bukit-design-tokens`
+3. `bukit-theme`
+4. `bukit-config`
+
+### Generate templates from schema
+
+1. `using-bukit`
+2. `bukit-content-to-template`
+3. `bukit-config`
+4. `bukit-templating`
+5. `bukit-design-tokens`
+
+### Build a componentized theme
+
+1. `using-bukit`
+2. `theme-component-system`
+3. `bukit-theme`
+4. `bukit-templating`
+
+### Run local preview or HMR development
+
+1. `using-bukit`
+2. `bukit-preview` or `bukit-dev`
+3. `bukit-cli-reference`
+
+### Configure automated webhook builds
+
+1. `using-bukit`
+2. `bukit-webhook`
+3. `bukit-notion`
+4. `bukit-cli-reference`
+
+## Minimal Bukit Flow
+
+This repository is not itself a Bukit site. Do not run `bukit build`, `bukit preview`, or `bukit dev` from this repo root. To try a minimal Bukit flow, run the commands inside a real Bukit site directory:
+
+```bash
+bukit version
+bukit init ./my-site --provider markdown
+cd my-site
+bukit build
+bukit preview
+```
+
+Notes:
+
+- `bukit build`, `bukit preview`, and `bukit dev` must run in a site root that contains `site.yaml`
+- The default output directory is typically `dist`
+- Notion-based sites usually require `NOTION_TOKEN`
+- Deployment and webhook workflows usually require GitHub-related environment variables or tokens
+- On Windows, direct executable usage often looks like `.\bukit.exe version` or `& .\bukit.exe version`
+
+## Catalog and Platform Files
+
+- `skills/skills-index.yaml` is the primary machine-readable catalog and should be updated first when skill inventory or workflow chains change
+- `skills/skills-index.json` is the generated JSON catalog for tooling
+- `skills/plugin.json` lists packaged skill file paths and optional dependencies
+- `skills/CLAUDE.md`, `skills/AGENTS.md`, `skills/GEMINI.md`, and `skills/copilot-instructions.md` adapt the same skill boundaries to different agent environments
+- `skills/scripts/validate-skills.sh` checks manifest paths, required front matter, trigger guidance, common-error sections, and hardcoded tool-name issues
+- `skills/scripts/generate-index-json.sh` regenerates JSON catalog data from the YAML source
+
 ## Maintenance Notes
 
 - Keep each skill at `skills/<skill-name>/SKILL.md`
-- Use `description` only for trigger conditions, not generic summaries
-- Centralize CLI instructions and execution notes in `bukit-cli-reference`
-- Keep theme paths, config fields, and CLI parameters aligned with actual Bukit behavior
+- Use `description` for trigger conditions and task boundaries, not generic marketing summaries
+- Centralize command execution rules and CLI interpretation in `bukit-cli-reference`
+- Keep theme paths, config fields, CLI parameters, diagnostics, and workflow chains aligned with actual Bukit behavior
 - When Bukit gains new capabilities, decide whether to extend an existing skill or add a new one with a clear boundary
+- Update all language README files together whenever the skill inventory changes
+- Run the validation script after modifying skills, manifests, or generated catalogs
 
 ## Docs
 
